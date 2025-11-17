@@ -35,7 +35,7 @@ TRAIN:
     PRINT_FREQ: 100
     TEST: False
     SEED: 1997
-    GPU_ID: 0
+    GPU_ID: -1
     DATA_PARALLEL: False
     RESUME: 
 
