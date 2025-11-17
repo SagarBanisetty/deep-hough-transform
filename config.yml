@@ -31,11 +31,11 @@ MODEL:
     # only support : resnet18, resnet50, resnet101, mobilenetv2, resnext50, res2net50, vgg16
 
 TRAIN:
-    EPOCHS: 3
+    EPOCHS: 30
     PRINT_FREQ: 100
     TEST: False
     SEED: 1997
-    GPU_ID: -1
+    GPU_ID: 0
     DATA_PARALLEL: False
     RESUME: 
 
