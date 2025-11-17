@@ -351,7 +351,7 @@ from model.network import Net
 from skimage.measure import label, regionprops
 from tensorboardX import SummaryWriter
 from utils import reverse_mapping, edge_align
-from hungarian_matching import caculate_tp_fp_fn
+# from hungarian_matching import caculate_tp_fp_fn
 
 parser = argparse.ArgumentParser(description='PyTorch Semantic-Line Training')
 # arguments from command line
@@ -557,107 +557,150 @@ def train(train_loader, model, optimizer, epoch, writer, args):
 def validate(val_loader, model, epoch, writer, args):
     # switch to evaluate mode
     model.eval()
-    total_acc = 0.0
-    total_loss_hough = 0
-
-    total_tp = np.zeros(99)
-    total_fp = np.zeros(99)
-    total_fn = np.zeros(99)
-
-    total_tp_align = np.zeros(99)
-    total_fp_align = np.zeros(99)
-    total_fn_align = np.zeros(99)
+    total_loss_hough = 0.0
+    num_samples = 0
 
     with torch.no_grad():
         bar = tqdm.tqdm(val_loader)
-        iter_num = len(val_loader.dataset) // 1
-        for i, data in enumerate(bar):
+        iter_num = len(val_loader.dataset) // 1 if len(val_loader.dataset) > 0 else 1
 
+        for i, data in enumerate(bar):
             images, hough_space_label8, gt_coords, names = data
 
             # move data to device
             images = images.to(device)
             hough_space_label8 = hough_space_label8.to(device)
 
+            # forward
             keypoint_map = model(images)
 
+            # loss
             hough_space_loss = torch.nn.functional.binary_cross_entropy_with_logits(
                 keypoint_map, hough_space_label8
             )
-            writer.add_scalar('val/hough_space_loss', hough_space_loss.item(), epoch * iter_num + i)
+            writer.add_scalar('val/hough_space_loss',
+                              hough_space_loss.item(),
+                              epoch * iter_num + i)
 
-            acc = 0
-            total_acc += acc
-
-            loss = hough_space_loss
-            if not torch.isnan(loss):
-                total_loss_hough += loss.item()
+            if not torch.isnan(hough_space_loss):
+                total_loss_hough += hough_space_loss.item()
+                num_samples += 1
             else:
-                logger.info("Warnning: val loss is Nan.")
+                logger.info("Warning: val loss is NaN.")
 
-            key_points = torch.sigmoid(keypoint_map)
-            binary_kmap = key_points.squeeze().cpu().numpy() > CONFIGS['MODEL']['THRESHOLD']
-            kmap_label = label(binary_kmap, connectivity=1)
-            props = regionprops(kmap_label)
-            plist = []
-            for prop in props:
-                plist.append(prop.centroid)
-            b_points = reverse_mapping(
-                plist,
-                numAngle=CONFIGS["MODEL"]["NUMANGLE"],
-                numRho=CONFIGS["MODEL"]["NUMRHO"],
-                size=(400, 400)
-            )
-            # [[y1, x1, y2, x2], [] ...]
-            gt_coords = gt_coords[0].tolist()
-            for i in range(1, 100):
-                tp, fp, fn = caculate_tp_fp_fn(b_points, gt_coords, thresh=i * 0.01)
-                total_tp[i - 1] += tp
-                total_fp[i - 1] += fp
-                total_fn[i - 1] += fn
+        avg_loss = total_loss_hough / max(num_samples, 1)
+        writer.add_scalar('val/total_loss_hough', avg_loss, epoch)
+        logger.info('Validation result: avg BCE loss: %.5f' % avg_loss)
 
-            if CONFIGS["MODEL"]["EDGE_ALIGN"]:
-                for i in range(len(b_points)):
-                    b_points[i] = edge_align(b_points[i], names[0], division=5)
+    # use negative loss as "acc" so lower loss = better
+    acc = -avg_loss
+    return acc
 
-                for i in range(1, 100):
-                    tp, fp, fn = caculate_tp_fp_fn(b_points, gt_coords, thresh=i * 0.01)
-                    total_tp_align[i - 1] += tp
-                    total_fp_align[i - 1] += fp
-                    total_fn_align[i - 1] += fn
 
-        total_loss_hough = total_loss_hough / iter_num
+# def validate(val_loader, model, epoch, writer, args):
+#     # switch to evaluate mode
+#     model.eval()
+#     total_acc = 0.0
+#     total_loss_hough = 0
 
-        total_recall = total_tp / (total_tp + total_fn + 1e-8)
-        total_precision = total_tp / (total_tp + total_fp + 1e-8)
-        f = 2 * total_recall * total_precision / (total_recall + total_precision + 1e-8)
+#     total_tp = np.zeros(99)
+#     total_fp = np.zeros(99)
+#     total_fn = np.zeros(99)
 
-        writer.add_scalar('val/total_loss_hough', total_loss_hough, epoch)
-        writer.add_scalar('val/total_precison', total_precision.mean(), epoch)
-        writer.add_scalar('val/total_recall', total_recall.mean(), epoch)
-        logger.info('Validation result: ==== Precision: %.5f, Recall: %.5f' %
-                    (total_precision.mean(), total_recall.mean()))
-        acc = f.mean()
-        logger.info('Validation result: ==== F-measure: %.5f' % acc.mean())
-        logger.info('Validation result: ==== F-measure@0.95: %.5f' % f[95 - 1])
-        writer.add_scalar('val/f-measure', acc.mean(), epoch)
-        writer.add_scalar('val/f-measure@0.95', f[95 - 1], epoch)
+#     total_tp_align = np.zeros(99)
+#     total_fp_align = np.zeros(99)
+#     total_fn_align = np.zeros(99)
 
-        if CONFIGS["MODEL"]["EDGE_ALIGN"]:
-            total_recall_align = total_tp_align / (total_tp_align + total_fn_align + 1e-8)
-            total_precision_align = total_tp_align / (total_tp_align + total_fp_align + 1e-8)
-            f_align = 2 * total_recall_align * total_precision_align / (
-                    total_recall_align + total_precision_align + 1e-8)
-            writer.add_scalar('val/total_precison_align', total_precision_align.mean(), epoch)
-            writer.add_scalar('val/total_recall_align', total_recall_align.mean(), epoch)
-            logger.info('Validation result (Aligned): ==== Precision: %.5f, Recall: %.5f' %
-                        (total_precision_align.mean(), total_recall_align.mean()))
-            acc = f_align.mean()
-            logger.info('Validation result (Aligned): ==== F-measure: %.5f' % acc.mean())
-            logger.info('Validation result (Aligned): ==== F-measure@0.95: %.5f' % f_align[95 - 1])
-            writer.add_scalar('val/f-measure', acc.mean(), epoch)
-            writer.add_scalar('val/f-measure@0.95', f_align[95 - 1], epoch)
-    return acc.mean()
+#     with torch.no_grad():
+#         bar = tqdm.tqdm(val_loader)
+#         iter_num = len(val_loader.dataset) // 1
+#         for i, data in enumerate(bar):
+
+#             images, hough_space_label8, gt_coords, names = data
+
+#             # move data to device
+#             images = images.to(device)
+#             hough_space_label8 = hough_space_label8.to(device)
+
+#             keypoint_map = model(images)
+
+#             hough_space_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+#                 keypoint_map, hough_space_label8
+#             )
+#             writer.add_scalar('val/hough_space_loss', hough_space_loss.item(), epoch * iter_num + i)
+
+#             acc = 0
+#             total_acc += acc
+
+#             loss = hough_space_loss
+#             if not torch.isnan(loss):
+#                 total_loss_hough += loss.item()
+#             else:
+#                 logger.info("Warnning: val loss is Nan.")
+
+#             key_points = torch.sigmoid(keypoint_map)
+#             binary_kmap = key_points.squeeze().cpu().numpy() > CONFIGS['MODEL']['THRESHOLD']
+#             kmap_label = label(binary_kmap, connectivity=1)
+#             props = regionprops(kmap_label)
+#             plist = []
+#             for prop in props:
+#                 plist.append(prop.centroid)
+#             b_points = reverse_mapping(
+#                 plist,
+#                 numAngle=CONFIGS["MODEL"]["NUMANGLE"],
+#                 numRho=CONFIGS["MODEL"]["NUMRHO"],
+#                 size=(400, 400)
+#             )
+#             # [[y1, x1, y2, x2], [] ...]
+#             gt_coords = gt_coords[0].tolist()
+#             for i in range(1, 100):
+#                 tp, fp, fn = caculate_tp_fp_fn(b_points, gt_coords, thresh=i * 0.01)
+#                 total_tp[i - 1] += tp
+#                 total_fp[i - 1] += fp
+#                 total_fn[i - 1] += fn
+
+#             if CONFIGS["MODEL"]["EDGE_ALIGN"]:
+#                 for i in range(len(b_points)):
+#                     b_points[i] = edge_align(b_points[i], names[0], division=5)
+
+#                 for i in range(1, 100):
+#                     tp, fp, fn = caculate_tp_fp_fn(b_points, gt_coords, thresh=i * 0.01)
+#                     total_tp_align[i - 1] += tp
+#                     total_fp_align[i - 1] += fp
+#                     total_fn_align[i - 1] += fn
+
+#         total_loss_hough = total_loss_hough / iter_num
+
+#         total_recall = total_tp / (total_tp + total_fn + 1e-8)
+#         total_precision = total_tp / (total_tp + total_fp + 1e-8)
+#         f = 2 * total_recall * total_precision / (total_recall + total_precision + 1e-8)
+
+#         writer.add_scalar('val/total_loss_hough', total_loss_hough, epoch)
+#         writer.add_scalar('val/total_precison', total_precision.mean(), epoch)
+#         writer.add_scalar('val/total_recall', total_recall.mean(), epoch)
+#         logger.info('Validation result: ==== Precision: %.5f, Recall: %.5f' %
+#                     (total_precision.mean(), total_recall.mean()))
+#         acc = f.mean()
+#         logger.info('Validation result: ==== F-measure: %.5f' % acc.mean())
+#         logger.info('Validation result: ==== F-measure@0.95: %.5f' % f[95 - 1])
+#         writer.add_scalar('val/f-measure', acc.mean(), epoch)
+#         writer.add_scalar('val/f-measure@0.95', f[95 - 1], epoch)
+
+#         if CONFIGS["MODEL"]["EDGE_ALIGN"]:
+#             total_recall_align = total_tp_align / (total_tp_align + total_fn_align + 1e-8)
+#             total_precision_align = total_tp_align / (total_tp_align + total_fp_align + 1e-8)
+#             f_align = 2 * total_recall_align * total_precision_align / (
+#                     total_recall_align + total_precision_align + 1e-8)
+#             writer.add_scalar('val/total_precison_align', total_precision_align.mean(), epoch)
+#             writer.add_scalar('val/total_recall_align', total_recall_align.mean(), epoch)
+#             logger.info('Validation result (Aligned): ==== Precision: %.5f, Recall: %.5f' %
+#                         (total_precision_align.mean(), total_recall_align.mean()))
+#             acc = f_align.mean()
+#             logger.info('Validation result (Aligned): ==== F-measure: %.5f' % acc.mean())
+#             logger.info('Validation result (Aligned): ==== F-measure@0.95: %.5f' % f_align[95 - 1])
+#             writer.add_scalar('val/f-measure', acc.mean(), epoch)
+#             writer.add_scalar('val/f-measure@0.95', f_align[95 - 1], epoch)
+#     return acc.mean()
 
 
 def save_checkpoint(state, is_best, path, filename='checkpoint.pth.tar'):
