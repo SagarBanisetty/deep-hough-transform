@@ -1,15 +1,5 @@
 <h1 style="align: center; color: #159957">Deep Hough Transform for Semantic Line Detection</h1>
 
-Jittor and Pytorch code accompanying the paper "Deep Hough Transform for Semantic Line Detection" (ECCV 2020, PAMI 2021).
-[arXiv2003.04676](https://arxiv.org/abs/2003.04676) | [Online Demo](http://mc.nankai.edu.cn/dht) | [Project page](http://mmcheng.net/dhtline) | [New dataset](https://data.kaizhao.net/deep-hough-transform/NKL.zip) | [Line Annotator](https://github.com/Hanqer/lines-manual-labeling)
-
-
-
-### Updates
-* Thanks [@HassanBinHaroon](https://github.com/HassanBinHaroon) for the Google Colab implementation of our paper: <https://github.com/HassanBinHaroon/deep-hough-transform>. You can run it anywhere with Google colab.
-* Training code is open available now.
-* Jittor inference code is open available now.
-
 
 ### Deep Hough Transform
 ![pipeline](./pipeline.png)
@@ -72,29 +62,3 @@ python train.py
 
 ### Testing
 Please refer to [test](./test.md) for detailed steps to reproduce the testing results.
-
-### Citation
-If our method/dataset are useful to your research, please consider to cite us:
-```
-@article{zhao2021deep,
-  author    = {Kai Zhao and Qi Han and Chang-bin Zhang and Jun Xu and Ming-ming Cheng},
-  title     = {Deep Hough Transform for Semantic Line Detection},
-  journal   = {IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)},
-  year      = {2021},
-  doi       = {10.1109/TPAMI.2021.3077129}
-}
-```
-```
-@inproceedings{eccv2020line,
-  title={Deep Hough Transform for Semantic Line Detection},
-  author={Qi Han and Kai Zhao and Jun Xu and Ming-Ming Cheng},
-  booktitle={ECCV},
-  pages={750--766},
-  year={2020}
-}
-```
-
-### License
-This project is licensed under the [Creative Commons NonCommercial (CC BY-NC 3.0)](https://creativecommons.org/licenses/by-nc/3.0/) license where only
-non-commercial usage is allowed. For commercial usage, please contact us.
-
